@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: simona-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: docker_simona
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - simona-net
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    container_name: simona-backend
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      DB_HOST: mysql
+      DB_USER: root
+      DB_PASS: root
+      DB_NAME: docker_simona
+      JWT_SECRET: your_jwt_secret_key_here
+    ports:
+      - "5000:5000"
+    depends_on:
+      - mysql
+    networks:
+      - simona-net
+    volumes:
+      - ./server:/app/server
+      - ./uploads:/app/uploads
+
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: simona-frontend
+    environment:
+      REACT_APP_API_URL: http://localhost:5000/api
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - simona-net
+
+volumes:
+  mysql_data:
+
+networks:
+  simona-net:
+    driver: bridge
