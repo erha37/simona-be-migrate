@@ -77,6 +77,60 @@ class HomeModels {
     }
     return data;
   }
+
+  async getSummary(upt, tahun) {
+    let query = `
+      SELECT 
+        CAST(SUM(pagu_revisi)/1000000000 AS DECIMAL(20,2)) as total_pagu,
+        CAST(SUM(realisasi_sd_periode)/1000000000 AS DECIMAL(20,2)) as total_realisasi,
+        COUNT(DISTINCT kd_unit) as total_unit,
+        COUNT(*) as total_program
+      FROM tb_spm_program
+      WHERE tahun_anggaran = ? AND is_active = '1'
+    `;
+    const params = [tahun];
+
+    if (upt !== '000111') {
+      query += ' AND kd_unit = ?';
+      params.push(upt);
+    }
+
+    try {
+      const conn = await pool.getConnection();
+      const [rows] = await conn.execute(query, params);
+      conn.release();
+      return rows[0] || { total_pagu: 0, total_realisasi: 0, total_unit: 0, total_program: 0 };
+    } catch (err) {
+      console.error('Query error:', err);
+      return { total_pagu: 0, total_realisasi: 0, total_unit: 0, total_program: 0 };
+    }
+  }
+
+  async getTopKegiatan(upt, tahun, limit = 5) {
+    let query = `
+      SELECT kd_unit, nm_unit, SUM(pagu_revisi) as pagu, SUM(realisasi_sd_periode) as realisasi
+      FROM tb_spm_program
+      WHERE tahun_anggaran = ? AND is_active = '1'
+    `;
+    const params = [tahun];
+
+    if (upt !== '000111') {
+      query += ' AND kd_unit = ?';
+      params.push(upt);
+    }
+
+    query += ` GROUP BY kd_unit, nm_unit ORDER BY pagu DESC LIMIT ${limit}`;
+
+    try {
+      const conn = await pool.getConnection();
+      const [rows] = await conn.execute(query, params);
+      conn.release();
+      return rows || [];
+    } catch (err) {
+      console.error('Query error:', err);
+      return [];
+    }
+  }
 }
 
 module.exports = new HomeModels();

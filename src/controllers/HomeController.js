@@ -65,6 +65,39 @@ class HomeController {
       res.status(500).json({ status: 'error', msg: err.message });
     }
   }
+
+  async getSummary(req, res) {
+    try {
+      const upt = req.user?.upt || '000111';
+      const tahun = req.query.tahun || new Date().getFullYear().toString();
+
+      const summary = await HomeModels.getSummary(upt, tahun);
+
+      res.json({
+        status: 'success',
+        data: summary
+      });
+    } catch (err) {
+      res.status(500).json({ status: 'error', msg: err.message });
+    }
+  }
+
+  async getTopKegiatan(req, res) {
+    try {
+      const upt = req.user?.upt || '000111';
+      const tahun = req.query.tahun || new Date().getFullYear().toString();
+      const limit = parseInt(req.query.limit) || 5;
+
+      const top = await HomeModels.getTopKegiatan(upt, tahun, limit);
+
+      res.json({
+        status: 'success',
+        data: top
+      });
+    } catch (err) {
+      res.status(500).json({ status: 'error', msg: err.message });
+    }
+  }
 }
 
 module.exports = new HomeController();
