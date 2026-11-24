@@ -28,7 +28,12 @@ export const apiService = {
   uploadFile: (formData) => api.post('/contacts/upload', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
-  getCreateForm: () => api.get('/contacts/new')
+  getCreateForm: () => api.get('/contacts/new'),
+
+  // Groups
+  getGroups: (params) => api.get('/groups', { params }),
+  getGroupSummary: (params) => api.get('/groups/summary', { params }),
+  getGroupDetail: (kode_kegiatan, params) => api.get(`/groups/${kode_kegiatan}`, { params })
 };
 
 export default api;

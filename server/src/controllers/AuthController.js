@@ -1,5 +1,8 @@
 const pool = require('../config/database');
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcrypt');
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../../.env') });
 
 class AuthController {
   async login(req, res) {
@@ -14,10 +17,8 @@ class AuthController {
       }
 
       // Query user dari database (contoh: tb_users atau table authentication)
-      const query = `SELECT * FROM tb_users WHERE username = ? LIMIT 1`;
-      const conn = await pool.getConnection();
-      const [rows] = await conn.execute(query, [username]);
-      conn.release();
+      const query = `SELECT * FROM users WHERE username = ? LIMIT 1`;
+      const [rows] = await pool.execute(query, [username]);
 
       if (rows.length === 0) {
         return res.status(401).json({
@@ -28,8 +29,9 @@ class AuthController {
 
       const user = rows[0];
 
-      // Verify password (seharusnya use bcrypt, ini placeholder)
-      if (user.password !== password) {
+      // Verify password with bcrypt
+      const isValid = await bcrypt.compare(password, user.password);
+      if (!isValid) {
         return res.status(401).json({
           status: 'error',
           msg: 'Username atau password salah'
@@ -41,8 +43,8 @@ class AuthController {
         {
           id: user.id,
           username: user.username,
-          level: user.level,
-          upt: user.kd_unit
+          level: user.role,
+          upt: user.upt
         },
         process.env.JWT_SECRET,
         { expiresIn: '24h' }
@@ -55,7 +57,7 @@ class AuthController {
         user: {
           id: user.id,
           username: user.username,
-          level: user.level
+          level: user.role
         }
       });
     } catch (err) {

@@ -1,4 +1,5 @@
-require('dotenv').config();
+require('dotenv').config({ path: __dirname + '/.env' });
+console.log('JWT_SECRET:', process.env.JWT_SECRET);
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -16,9 +17,11 @@ app.use('/uploads', express.static('uploads'));
 const homeRoutes = require('./src/routes/homeRoutes');
 const contactsRoutes = require('./src/routes/contactsRoutes');
 const authRoutes = require('./src/routes/authRoutes');
+const groupsRoutes = require('./src/routes/groupsRoutes');
 app.use('/api', homeRoutes);
 app.use('/api', contactsRoutes);
 app.use('/api', authRoutes);
+app.use('/api', groupsRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

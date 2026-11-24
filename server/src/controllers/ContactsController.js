@@ -1,6 +1,8 @@
 const ContactsModels = require('../models/ContactsModels');
 const path = require('path');
 const fs = require('fs');
+const XLSX = require('xlsx');
+const pool = require('../config/database');
 
 class ContactsController {
   async index(req, res) {
@@ -26,6 +28,42 @@ class ContactsController {
       });
     } catch (err) {
       res.status(500).json({ status: 'error', msg: err.message });
+    }
+  }
+
+  async parseExcel(filePath) {
+    try {
+      const workbook = XLSX.readFile(filePath);
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+      
+      // Skip header row, process data rows
+      const dataRows = jsonData.slice(1);
+      const parsedData = [];
+      
+      for (const row of dataRows) {
+        if (!row || row.length === 0) continue;
+        
+        // Expected columns: kode_kegiatan, nama_kegiatan, pagu_revisi, realisasi_sd_periode, sisa_anggaran
+        // Adjust based on actual Excel structure
+        const item = {
+          kode_kegiatan: row[0] || '',
+          nama_kegiatan: row[1] || '',
+          pagu_revisi: parseFloat(row[2]) || 0,
+          realisasi_sd_periode: parseFloat(row[3]) || 0,
+          sisa_anggaran: parseFloat(row[4]) || 0
+        };
+        
+        if (item.kode_kegiatan && item.nama_kegiatan) {
+          parsedData.push(item);
+        }
+      }
+      
+      return parsedData;
+    } catch (err) {
+      console.error('Excel parse error:', err);
+      throw err;
     }
   }
 
@@ -59,18 +97,55 @@ class ContactsController {
         tgl_upload: new Date()
       };
 
-      // Parse Excel jika ada xlsx library
-      if (req.file.mimetype.includes('spreadsheet') || req.file.originalname.endsWith('.xlsx')) {
-        // TODO: Parse Excel dan insert data
-        // const XLSX = require('xlsx');
-        // const workbook = XLSX.readFile(filePath);
-        // // Process rows...
+      // Parse Excel jika spreadsheet
+      let parsedCount = 0;
+      if (req.file.mimetype.includes('spreadsheet') || req.file.originalname.endsWith('.xlsx') || req.file.originalname.endsWith('.xls')) {
+        try {
+          const parsedData = await this.parseExcel(filePath);
+          
+          // Get or create id_spm_program based on nama_upt, bulan, tahunanggaran
+          const programQuery = `SELECT id_spm_program FROM tb_spm_program WHERE nama_upt = ? AND bulan = ? AND tahun_anggaran = ? AND is_active = '1' LIMIT 1`;
+          const [programRows] = await pool.execute(programQuery, [nama_upt, bulan, tahunanggaran]);
+          
+          let id_spm_program = programRows.length > 0 ? programRows[0].id_spm_program : null;
+          
+          // If no program exists, create one
+          if (!id_spm_program) {
+            const createProgramQuery = `INSERT INTO tb_spm_program (nama_upt, bulan, tahun_anggaran, is_active) VALUES (?, ?, ?, '1')`;
+            const [createResult] = await pool.execute(createProgramQuery, [nama_upt, bulan, tahunanggaran]);
+            id_spm_program = createResult.insertId;
+          }
+
+          if (id_spm_program) {
+            for (const item of parsedData) {
+              const insertData = {
+                id_spm_program,
+                kd_unit: req.user?.upt || '000111',
+                nama_upt,
+                kode_kegiatan: item.kode_kegiatan,
+                nama_kegiatan: item.nama_kegiatan,
+                pagu_revisi: item.pagu_revisi,
+                realisasi_sd_periode: item.realisasi_sd_periode,
+                sisa_anggaran: item.sisa_anggaran,
+                upt_id: req.user?.upt || '000111',
+                bulan: parseInt(bulan),
+                tahun_anggaran: parseInt(tahunanggaran)
+              };
+              
+              await ContactsModels.insertKegiatan(insertData);
+              parsedCount++;
+            }
+          }
+        } catch (parseErr) {
+          console.error('Parse/insert error:', parseErr);
+          // Continue - file uploaded but parse failed
+        }
       }
 
       res.json({
         status: 'success',
-        msg: 'File berhasil diupload',
-        data: fileData
+        msg: `File berhasil diupload${parsedCount > 0 ? `, ${parsedCount} data kegiatan diimport` : ''}`,
+        data: { ...fileData, parsedCount }
       });
     } catch (err) {
       console.error(err);

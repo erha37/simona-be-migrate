@@ -4,9 +4,7 @@ class ContactsModels {
   async getSatker() {
     const query = `SELECT DISTINCT kd_satker, nama_satker FROM tb_satker ORDER BY nama_satker`;
     try {
-      const conn = await pool.getConnection();
-      const [rows] = await conn.execute(query);
-      conn.release();
+      const [rows] = await pool.execute(query);
       return rows;
     } catch (err) {
       console.error('Query error:', err);
@@ -16,7 +14,7 @@ class ContactsModels {
 
   async getKdSatker(level, user) {
     let query = `
-      SELECT DISTINCT nama_upt as upt, bulan, tahun_anggaran, tgl_upload
+      SELECT DISTINCT nama_upt as upt, bulan, tahun_anggaran, created_at as tgl_upload
       FROM tb_spm_kegiatan
       WHERE is_active = '1'
     `;
@@ -27,12 +25,10 @@ class ContactsModels {
       params.push(user);
     }
 
-    query += ' ORDER BY tgl_upload DESC';
+    query += ' ORDER BY created_at DESC';
 
     try {
-      const conn = await pool.getConnection();
-      const [rows] = await conn.execute(query, params);
-      conn.release();
+      const [rows] = await pool.execute(query, params);
       return rows;
     } catch (err) {
       console.error('Query error:', err);
@@ -44,18 +40,17 @@ class ContactsModels {
     const query = `
       INSERT INTO tb_spm_kegiatan 
       (id_spm_program, kd_unit, nama_upt, kode_kegiatan, nama_kegiatan, 
-       pagu_revisi, realisasi_sd_periode, sisa_anggaran, bulan, tahun_anggaran, is_active)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '1')
-      ON DUPLICATE KEY UPDATE
-      pagu_revisi = VALUES(pagu_revisi),
-      realisasi_sd_periode = VALUES(realisasi_sd_periode),
-      sisa_anggaran = VALUES(sisa_anggaran),
+       pagu_revisi, realisasi_sd_periode, sisa_anggaran, upt_id, bulan, tahun_anggaran, is_active)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '1')
+      ON CONFLICT(kode_kegiatan, upt_id, bulan, tahun_anggaran) DO UPDATE SET
+      pagu_revisi = excluded.pagu_revisi,
+      realisasi_sd_periode = excluded.realisasi_sd_periode,
+      sisa_anggaran = excluded.sisa_anggaran,
       is_active = '1'
     `;
 
     try {
-      const conn = await pool.getConnection();
-      const [result] = await conn.execute(query, [
+      const [result] = await pool.execute(query, [
         data.id_spm_program,
         data.kd_unit,
         data.nama_upt,
@@ -64,10 +59,10 @@ class ContactsModels {
         data.pagu_revisi,
         data.realisasi_sd_periode,
         data.sisa_anggaran,
+        data.upt_id || data.kd_unit,
         data.bulan,
-        data.tahun_anggaran
+        data.tahun_anggaran || data.tahun
       ]);
-      conn.release();
       return result;
     } catch (err) {
       console.error('Insert error:', err);

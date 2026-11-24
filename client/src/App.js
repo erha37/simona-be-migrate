@@ -3,6 +3,7 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 import Login from './components/Login';
 import Home from './components/Home';
 import Contacts from './components/Contacts';
+import Groups from './components/Groups';
 
 function App() {
   const [currentPage, setCurrentPage] = useState('home');
@@ -66,6 +67,15 @@ function App() {
                 </a>
               </li>
               <li className="nav-item">
+                <a 
+                  className={`nav-link ${currentPage === 'groups' ? 'active' : ''}`}
+                  href="#" 
+                  onClick={(e) => { e.preventDefault(); setCurrentPage('groups'); }}
+                >
+                  Laporan Kegiatan
+                </a>
+              </li>
+              <li className="nav-item">
                 <span className="nav-link">User: {user.username}</span>
               </li>
               <li className="nav-item">
@@ -85,6 +95,7 @@ function App() {
       <div className="container-fluid">
         {currentPage === 'home' && <Home />}
         {currentPage === 'contacts' && <Contacts />}
+        {currentPage === 'groups' && <Groups />}
       </div>
     </div>
   );
