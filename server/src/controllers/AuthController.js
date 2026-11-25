@@ -1,8 +1,7 @@
-const pool = require('../config/database');
+const { User } = require('../models');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
-const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '../../.env') });
+// dotenv sudah di-load sekali di server/app.js (entry point), tidak perlu diulang di sini
 
 class AuthController {
   async login(req, res) {
@@ -16,18 +15,15 @@ class AuthController {
         });
       }
 
-      // Query user dari database (contoh: tb_users atau table authentication)
-      const query = `SELECT * FROM users WHERE username = ? LIMIT 1`;
-      const [rows] = await pool.execute(query, [username]);
+      // Cari user dari tabel `tb_user` lewat model Sequelize
+      const user = await User.findOne({ where: { user: username } });
 
-      if (rows.length === 0) {
+      if (!user) {
         return res.status(401).json({
           status: 'error',
           msg: 'Username atau password salah'
         });
       }
-
-      const user = rows[0];
 
       // Verify password with bcrypt
       const isValid = await bcrypt.compare(password, user.password);
@@ -41,9 +37,9 @@ class AuthController {
       // Generate JWT token
       const token = jwt.sign(
         {
-          id: user.id,
-          username: user.username,
-          level: user.role,
+          id: user.id_user,
+          username: user.user,
+          level: user.level,
           upt: user.upt
         },
         process.env.JWT_SECRET,
@@ -55,9 +51,10 @@ class AuthController {
         msg: 'Login berhasil',
         token: token,
         user: {
-          id: user.id,
-          username: user.username,
-          level: user.role
+          id: user.id_user,
+          username: user.user,
+          level: user.level,
+          upt: user.upt
         }
       });
     } catch (err) {

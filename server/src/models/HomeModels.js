@@ -1,4 +1,5 @@
-const pool = require('../config/database');
+const { fn, col } = require('sequelize');
+const { SpmKegiatan } = require('./index');
 
 class HomeModels {
   async chartPagu(upt, tahun) {
@@ -6,30 +7,29 @@ class HomeModels {
     const data = { pagu: [], realisasi: [], sisa: [] };
 
     for (const month of months) {
-      let query = `
-        SELECT 
-          CAST(SUM(pagu_revisi)/1000000000 AS DECIMAL(20,2)) as pagu,
-          CAST(SUM(realisasi_sd_periode)/1000000000 AS DECIMAL(20,2)) as realisasi,
-          CAST(SUM(sisa_anggaran)/1000000000 AS DECIMAL(20,2)) as sisa
-        FROM tb_spm_program
-        WHERE tahun_anggaran = ? AND is_active = '1' AND bulan = ?
-      `;
-      const params = [tahun, month];
-
+      const where = {
+        tahun_anggaran: tahun,
+        is_active: '1',
+        bulan: String(month)
+      };
       if (upt !== '000111') {
-        query += ' AND kd_unit = ?';
-        params.push(upt);
+        where.upt_id = upt;
       }
 
       try {
-        const conn = await pool.getConnection();
-        const [rows] = await conn.execute(query, params);
-        conn.release();
+        const result = await SpmKegiatan.findOne({
+          attributes: [
+            [fn('SUM', col('pagu_revisi')), 'pagu'],
+            [fn('SUM', col('realisasi_sd_periode')), 'realisasi'],
+            [fn('SUM', col('sisa_anggaran')), 'sisa']
+          ],
+          where,
+          raw: true
+        });
 
-        const result = rows[0];
-        data.pagu.push(result ? parseFloat(result.pagu) : 0);
-        data.realisasi.push(result ? parseFloat(result.realisasi) : 0);
-        data.sisa.push(result ? parseFloat(result.sisa) : 0);
+        data.pagu.push(result?.pagu ? Number((result.pagu / 1_000_000_000).toFixed(2)) : 0);
+        data.realisasi.push(result?.realisasi ? Number((result.realisasi / 1_000_000_000).toFixed(2)) : 0);
+        data.sisa.push(result?.sisa ? Number((result.sisa / 1_000_000_000).toFixed(2)) : 0);
       } catch (err) {
         console.error('Query error:', err);
         data.pagu.push(0);
@@ -43,37 +43,35 @@ class HomeModels {
   async chartRealisasi(upt, tahun) {
     const months = Array.from({ length: 12 }, (_, i) => i + 1);
     const data = { persen: [] };
+    months.forEach(() => data.persen.push(0));
 
-    let query = `
-      SELECT ROUND((SUM(realisasi_sd_periode)/SUM(pagu_revisi))*100, 2) as persen, bulan
-      FROM tb_spm_program
-      WHERE tahun_anggaran = ? AND is_active = '1'
-    `;
-    const params = [tahun];
-
+    const where = { tahun_anggaran: tahun, is_active: '1' };
     if (upt !== '000111') {
-      query += ' AND kd_unit = ?';
-      params.push(upt);
+      where.upt_id = upt;
     }
 
-    query += ' GROUP BY tahun_anggaran, bulan ORDER BY CAST(bulan AS UNSIGNED) ASC';
-
     try {
-      const conn = await pool.getConnection();
-      const [results] = await conn.execute(query, params);
-      conn.release();
+      const results = await SpmKegiatan.findAll({
+        attributes: [
+          'bulan',
+          [fn('SUM', col('realisasi_sd_periode')), 'total_realisasi'],
+          [fn('SUM', col('pagu_revisi')), 'total_pagu']
+        ],
+        where,
+        group: ['bulan'],
+        raw: true
+      });
 
-      // Initialize all months with 0
-      months.forEach(() => data.persen.push(0));
-
-      // Fill in actual percentages
       results.forEach(row => {
-        const monthIndex = parseInt(row.bulan) - 1;
-        data.persen[monthIndex] = parseFloat(row.persen);
+        const monthIndex = parseInt(row.bulan, 10) - 1;
+        const totalPagu = Number(row.total_pagu) || 0;
+        const totalRealisasi = Number(row.total_realisasi) || 0;
+        data.persen[monthIndex] = totalPagu > 0
+          ? Math.round((totalRealisasi / totalPagu) * 100 * 100) / 100
+          : 0;
       });
     } catch (err) {
       console.error('Query error:', err);
-      months.forEach(() => data.persen.push(0));
     }
     return data;
   }

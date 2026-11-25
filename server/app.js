@@ -1,11 +1,18 @@
-require('dotenv').config({ path: __dirname + '/.env' });
-console.log('JWT_SECRET:', process.env.JWT_SECRET);
+const path = require('path');
+// .env ada di root project (sejajar folder server/ & client/), bukan di dalam server/
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
+
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
-const path = require('path');
 
 const app = express();
+
+// Cek koneksi database (Sequelize) saat server start
+const { sequelize } = require('./src/models');
+sequelize.authenticate()
+  .then(() => console.log('Database (Sequelize) terkoneksi.'))
+  .catch((err) => console.error('Gagal konek database:', err.message));
 
 // Middleware
 app.use(cors());

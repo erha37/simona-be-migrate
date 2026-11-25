@@ -2,7 +2,7 @@ const ContactsModels = require('../models/ContactsModels');
 const path = require('path');
 const fs = require('fs');
 const XLSX = require('xlsx');
-const pool = require('../config/database');
+const { SpmProgram } = require('../models');
 
 class ContactsController {
   async index(req, res) {
@@ -104,17 +104,15 @@ class ContactsController {
           const parsedData = await this.parseExcel(filePath);
           
           // Get or create id_spm_program based on nama_upt, bulan, tahunanggaran
-          const programQuery = `SELECT id_spm_program FROM tb_spm_program WHERE nama_upt = ? AND bulan = ? AND tahun_anggaran = ? AND is_active = '1' LIMIT 1`;
-          const [programRows] = await pool.execute(programQuery, [nama_upt, bulan, tahunanggaran]);
-          
-          let id_spm_program = programRows.length > 0 ? programRows[0].id_spm_program : null;
-          
-          // If no program exists, create one
-          if (!id_spm_program) {
-            const createProgramQuery = `INSERT INTO tb_spm_program (nama_upt, bulan, tahun_anggaran, is_active) VALUES (?, ?, ?, '1')`;
-            const [createResult] = await pool.execute(createProgramQuery, [nama_upt, bulan, tahunanggaran]);
-            id_spm_program = createResult.insertId;
-          }
+          const [program] = await SpmProgram.findOrCreate({
+            where: {
+              nama_upt,
+              bulan,
+              tahun_anggaran: tahunanggaran,
+              is_active: '1'
+            }
+          });
+          const id_spm_program = program.id_spm_program;
 
           if (id_spm_program) {
             for (const item of parsedData) {

@@ -1,10 +1,14 @@
-const pool = require('../config/database');
+const { Satker, SpmKegiatan } = require('./index');
 
 class ContactsModels {
   async getSatker() {
-    const query = `SELECT DISTINCT kd_satker, nama_satker FROM tb_satker ORDER BY nama_satker`;
     try {
-      const [rows] = await pool.execute(query);
+      const rows = await Satker.findAll({
+        attributes: ['kd_satker', 'nama_satker'],
+        group: ['kd_satker', 'nama_satker'],
+        order: [['nama_satker', 'ASC']],
+        raw: true
+      });
       return rows;
     } catch (err) {
       console.error('Query error:', err);
@@ -13,22 +17,24 @@ class ContactsModels {
   }
 
   async getKdSatker(level, user) {
-    let query = `
-      SELECT DISTINCT nama_upt as upt, bulan, tahun_anggaran, created_at as tgl_upload
-      FROM tb_spm_kegiatan
-      WHERE is_active = '1'
-    `;
-    const params = [];
-
+    const where = { is_active: '1' };
     if (level !== '1' && user !== '000111') {
-      query += ' AND kd_unit = ?';
-      params.push(user);
+      where.kd_unit = user;
     }
 
-    query += ' ORDER BY created_at DESC';
-
     try {
-      const [rows] = await pool.execute(query, params);
+      const rows = await SpmKegiatan.findAll({
+        attributes: [
+          ['nama_upt', 'upt'],
+          'bulan',
+          'tahun_anggaran',
+          ['created_at', 'tgl_upload']
+        ],
+        where,
+        group: ['nama_upt', 'bulan', 'tahun_anggaran', 'created_at'],
+        order: [['created_at', 'DESC']],
+        raw: true
+      });
       return rows;
     } catch (err) {
       console.error('Query error:', err);
@@ -36,34 +42,40 @@ class ContactsModels {
     }
   }
 
+  // Insert kegiatan baru, atau update kalau kombinasi
+  // (kode_kegiatan, upt_id, bulan, tahun_anggaran) sudah ada.
   async insertKegiatan(data) {
-    const query = `
-      INSERT INTO tb_spm_kegiatan 
-      (id_spm_program, kd_unit, nama_upt, kode_kegiatan, nama_kegiatan, 
-       pagu_revisi, realisasi_sd_periode, sisa_anggaran, upt_id, bulan, tahun_anggaran, is_active)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '1')
-      ON CONFLICT(kode_kegiatan, upt_id, bulan, tahun_anggaran) DO UPDATE SET
-      pagu_revisi = excluded.pagu_revisi,
-      realisasi_sd_periode = excluded.realisasi_sd_periode,
-      sisa_anggaran = excluded.sisa_anggaran,
-      is_active = '1'
-    `;
-
     try {
-      const [result] = await pool.execute(query, [
-        data.id_spm_program,
-        data.kd_unit,
-        data.nama_upt,
-        data.kode_kegiatan,
-        data.nama_kegiatan,
-        data.pagu_revisi,
-        data.realisasi_sd_periode,
-        data.sisa_anggaran,
-        data.upt_id || data.kd_unit,
-        data.bulan,
-        data.tahun_anggaran || data.tahun
-      ]);
-      return result;
+      const [record, created] = await SpmKegiatan.findOrCreate({
+        where: {
+          kode_kegiatan: data.kode_kegiatan,
+          upt_id: data.upt_id || data.kd_unit,
+          bulan: data.bulan,
+          tahun_anggaran: data.tahun_anggaran || data.tahun
+        },
+        defaults: {
+          id_spm_program: data.id_spm_program,
+          kd_unit: data.kd_unit,
+          nama_upt: data.nama_upt,
+          nama_kegiatan: data.nama_kegiatan,
+          pagu_revisi: data.pagu_revisi,
+          realisasi_sd_periode: data.realisasi_sd_periode,
+          sisa_anggaran: data.sisa_anggaran,
+          is_active: '1'
+        }
+      });
+
+      if (!created) {
+        await record.update({
+          nama_kegiatan: data.nama_kegiatan,
+          pagu_revisi: data.pagu_revisi,
+          realisasi_sd_periode: data.realisasi_sd_periode,
+          sisa_anggaran: data.sisa_anggaran,
+          is_active: '1'
+        });
+      }
+
+      return record;
     } catch (err) {
       console.error('Insert error:', err);
       throw err;

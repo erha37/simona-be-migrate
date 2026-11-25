@@ -1,4 +1,5 @@
-const pool = require('../config/database');
+const { fn, col } = require('sequelize');
+const { SpmKegiatan } = require('../models');
 
 class GroupsController {
   async getGroups(req, res) {
@@ -7,38 +8,28 @@ class GroupsController {
       const tahun = req.query.tahun || new Date().getFullYear().toString();
       const bulan = req.query.bulan || '';
 
-      let query = `
-        SELECT DISTINCT g.kode_kegiatan, g.nama_kegiatan, g.upt_id,
-               g.pagu_revisi, g.realisasi_sd_periode, g.sisa_anggaran,
-               g.bulan, g.tahun_anggaran
-        FROM tb_spm_kegiatan g
-        WHERE g.is_active = '1'
-      `;
-      const params = [];
+      const where = { is_active: '1' };
+      if (upt !== '000111') where.upt_id = upt;
+      if (tahun) where.tahun_anggaran = tahun;
+      if (bulan) where.bulan = bulan;
 
-      if (upt !== '000111') {
-        query += ' AND g.upt_id = ?';
-        params.push(upt);
-      }
-
-      if (tahun) {
-        query += ' AND g.tahun_anggaran = ?';
-        params.push(tahun);
-      }
-
-      if (bulan) {
-        query += ' AND g.bulan = ?';
-        params.push(bulan);
-      }
-
-      query += ' ORDER BY g.kode_kegiatan';
-
-      const [rows] = await pool.execute(query, params);
-
-      res.json({
-        status: 'success',
-        data: rows
+      const rows = await SpmKegiatan.findAll({
+        attributes: [
+          'kode_kegiatan', 'nama_kegiatan', 'upt_id',
+          'pagu_revisi', 'realisasi_sd_periode', 'sisa_anggaran',
+          'bulan', 'tahun_anggaran'
+        ],
+        where,
+        group: [
+          'kode_kegiatan', 'nama_kegiatan', 'upt_id',
+          'pagu_revisi', 'realisasi_sd_periode', 'sisa_anggaran',
+          'bulan', 'tahun_anggaran'
+        ],
+        order: [['kode_kegiatan', 'ASC']],
+        raw: true
       });
+
+      res.json({ status: 'success', data: rows });
     } catch (err) {
       console.error('Get groups error:', err);
       res.status(500).json({ status: 'error', msg: err.message });
@@ -52,41 +43,18 @@ class GroupsController {
       const tahun = req.query.tahun || new Date().getFullYear().toString();
       const bulan = req.query.bulan || '';
 
-      let query = `
-        SELECT g.*
-        FROM tb_spm_kegiatan g
-        WHERE g.kode_kegiatan = ? AND g.is_active = '1'
-      `;
-      const params = [kode_kegiatan];
+      const where = { kode_kegiatan, is_active: '1' };
+      if (upt !== '000111') where.upt_id = upt;
+      if (tahun) where.tahun_anggaran = tahun;
+      if (bulan) where.bulan = bulan;
 
-      if (upt !== '000111') {
-        query += ' AND g.upt_id = ?';
-        params.push(upt);
+      const row = await SpmKegiatan.findOne({ where, raw: true });
+
+      if (!row) {
+        return res.json({ status: 'error', msg: 'Kegiatan tidak ditemukan' });
       }
 
-      if (tahun) {
-        query += ' AND g.tahun_anggaran = ?';
-        params.push(tahun);
-      }
-
-      if (bulan) {
-        query += ' AND g.bulan = ?';
-        params.push(bulan);
-      }
-
-      const [rows] = await pool.execute(query, params);
-
-      if (rows.length === 0) {
-        return res.json({
-          status: 'error',
-          msg: 'Kegiatan tidak ditemukan'
-        });
-      }
-
-      res.json({
-        status: 'success',
-        data: rows[0]
-      });
+      res.json({ status: 'success', data: row });
     } catch (err) {
       console.error('Get group detail error:', err);
       res.status(500).json({ status: 'error', msg: err.message });
@@ -98,38 +66,38 @@ class GroupsController {
       const upt = req.user?.upt || '000111';
       const tahun = req.query.tahun || new Date().getFullYear().toString();
 
-      let query = `
-        SELECT 
-          g.kode_kegiatan,
-          g.nama_kegiatan,
-          SUM(g.pagu_revisi) as total_pagu,
-          SUM(g.realisasi_sd_periode) as total_realisasi,
-          SUM(g.sisa_anggaran) as total_sisa,
-          COUNT(*) as jumlah_record,
-          ROUND((SUM(g.realisasi_sd_periode) / SUM(g.pagu_revisi)) * 100, 2) as persen_realisasi
-        FROM tb_spm_kegiatan g
-        WHERE g.is_active = '1'
-      `;
-      const params = [];
+      const where = { is_active: '1' };
+      if (upt !== '000111') where.upt_id = upt;
+      if (tahun) where.tahun_anggaran = tahun;
 
-      if (upt !== '000111') {
-        query += ' AND g.upt_id = ?';
-        params.push(upt);
-      }
-
-      if (tahun) {
-        query += ' AND g.tahun_anggaran = ?';
-        params.push(tahun);
-      }
-
-      query += ' GROUP BY g.kode_kegiatan, g.nama_kegiatan ORDER BY g.kode_kegiatan';
-
-      const [rows] = await pool.execute(query, params);
-
-      res.json({
-        status: 'success',
-        data: rows
+      const rows = await SpmKegiatan.findAll({
+        attributes: [
+          'kode_kegiatan',
+          'nama_kegiatan',
+          [fn('SUM', col('pagu_revisi')), 'total_pagu'],
+          [fn('SUM', col('realisasi_sd_periode')), 'total_realisasi'],
+          [fn('SUM', col('sisa_anggaran')), 'total_sisa'],
+          [fn('COUNT', col('id')), 'jumlah_record']
+        ],
+        where,
+        group: ['kode_kegiatan', 'nama_kegiatan'],
+        order: [['kode_kegiatan', 'ASC']],
+        raw: true
       });
+
+      // persen_realisasi dihitung di JS (lebih portable daripada raw SQL division)
+      const data = rows.map(r => {
+        const totalPagu = Number(r.total_pagu) || 0;
+        const totalRealisasi = Number(r.total_realisasi) || 0;
+        return {
+          ...r,
+          persen_realisasi: totalPagu > 0
+            ? Math.round((totalRealisasi / totalPagu) * 100 * 100) / 100
+            : 0
+        };
+      });
+
+      res.json({ status: 'success', data });
     } catch (err) {
       console.error('Get group summary error:', err);
       res.status(500).json({ status: 'error', msg: err.message });
